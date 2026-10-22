@@ -35,3 +35,10 @@ body{padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}
 .viewer-only{display:none}
 .viewer .viewer-only.on{display:block}
 .viewer .tabbar,.viewer .editor{display:none!important}
+:root{--xday:#c9edf6;--xnight:#e6d9ff}
+.daycell.extra.day{background:var(--xday)}
+.daycell.extra.night{background:var(--xnight)}
+.dot.xday{background:var(--xday)}
+.dot.xnight{background:var(--xnight)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--xday:#0f6a80;--xnight:#6b3fb5}:root:not([data-theme=light]) .daycell.extra.day{background:var(--xday)}:root:not([data-theme=light]) .daycell.extra.night{background:var(--xnight)}}
+:root[data-theme=dark]{--xday:#0f6a80;--xnight:#6b3fb5}:root[data-theme=dark] .daycell.extra.day{background:var(--xday)}:root[data-theme=dark] .daycell.extra.night{background:var(--xnight)}

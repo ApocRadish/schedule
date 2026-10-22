@@ -12,7 +12,7 @@ const salaryDefaults = {
   vacationPay:0, taxableBenefit:0, taxRate:13, unionRate:0, mealDeduction:0,
   otherDeductions:0, advancePaid:0, otherPaid:0, ...PAYROLL_PROFILES.base
 };
-const defaults = {leave:[],shifts:{},salary:{...salaryDefaults},payrollHistory:[],latestImportedRates:null,classifications:{},pendingModelProposal:null};
+const defaults = {leave:[],shifts:{},extra:{},salary:{...salaryDefaults},payrollHistory:[],latestImportedRates:null,classifications:{},pendingModelProposal:null};
 const $ = id => document.getElementById(id);
 const MONEY = new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',minimumFractionDigits:2,maximumFractionDigits:2});
 const NUMBER = new Intl.NumberFormat('ru-RU',{minimumFractionDigits:0,maximumFractionDigits:2});
@@ -69,7 +69,7 @@ function shareLink(c){return `${location.origin}${location.pathname}#v=${c.id}.$
 function shareStatus(t){$('shareStatus').textContent=t}
 function sharePayload(c){const t=new Date(),from=isoDate(new Date(t.getFullYear(),t.getMonth()-1,1)),sh={};
   for(const [k,v] of Object.entries(data.shifts))if(k>=from)sh[k]=v;
-  const p={v:1,updated:Date.now(),shifts:sh,leave:data.leave.filter(k=>k>=from)};
+  const p={v:1,updated:Date.now(),shifts:sh,leave:data.leave.filter(k=>k>=from),extra:Object.fromEntries(Object.keys(data.extra||{}).filter(k=>k>=from&&isExtra(k)).map(k=>[k,true]))};
   if(c.mode==='full'){const adv=[...new Set((data.payrollHistory||[]).filter(h=>!h.specialMonth&&h.advance>0).map(h=>Math.round(h.advance)))].sort((x,y)=>x-y);
     p.pay=[0,1].map(i=>{const d=new Date(t.getFullYear(),t.getMonth()+i,1),mk=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,sn=calendarSnapshot(mk);
       if(sn.day+sn.night===0)return null;return {month:mk,net:Math.round(calculateSalary(data.salary,sn.day,sn.night).net),advance:adv.length?[adv[0],adv[adv.length-1]]:null,vac:data.leave.some(k=>k.startsWith(mk))}}).filter(Boolean)}
@@ -83,12 +83,15 @@ function isoDate(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart
 function fromIso(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)}
 function addDays(s,n){const d=fromIso(s);d.setDate(d.getDate()+n);return isoDate(d)}
 function typeOf(s){if(data.leave.includes(s))return 'VACATION';return data.shifts[s]||'OFF'}
+function isExtra(s){const t=typeOf(s);return !!(data.extra&&data.extra[s])&&(t==='DAY'||t==='NIGHT')}
+function labelOf(s){return label(typeOf(s))+(isExtra(s)?' (ДОП.)':'')}
+function extraCount(y,m){const p=`${y}-${String(m).padStart(2,'0')}-`;return Object.keys(data.extra||{}).filter(k=>k.startsWith(p)&&isExtra(k)).length}
 function calendarSnapshot(month){
   const [y,m]=month.split('-').map(Number),n=new Date(y,m,0).getDate();let day=0,night=0;
   for(let d=1;d<=n;d++){const t=typeOf(`${month}-${String(d).padStart(2,'0')}`);if(t==='DAY')day++;else if(t==='NIGHT')night++}
   return {day,night,hours:day*(Number(data.salary.dayHours)||0)+night*(Number(data.salary.nightShiftHours)||0)};
 }
-function cycleDate(s){if(VIEW_ONLY)return false;const t=typeOf(s);if(t==='VACATION'){$('status').textContent='Отпуск меняется в блоке «Изменить дату».';return false}const nx=t==='DAY'?'NIGHT':t==='NIGHT'?'OFF':'DAY';if(nx==='OFF')delete data.shifts[s];else data.shifts[s]=nx;persist();render();$('status').textContent=`${s}: ${label(nx)}. Повторный тап по выбранной дате меняет смену.`;return true}
+function cycleDate(s){if(VIEW_ONLY)return false;const t=typeOf(s);if(t==='VACATION'){$('status').textContent='Отпуск меняется в блоке «Изменить дату».';return false}const nx=t==='DAY'?'NIGHT':t==='NIGHT'?'OFF':'DAY';if(nx==='OFF')delete data.shifts[s];else data.shifts[s]=nx;if(data.extra)delete data.extra[s];persist();render();$('status').textContent=`${s}: ${label(nx)}. Повторный тап по выбранной дате меняет смену.`;return true}
 function label(t){return ({DAY:'ДЕНЬ',NIGHT:'НОЧЬ',OFF:'ВЫХОДНОЙ',VACATION:'ОТПУСК'})[t]||t}
 function time(t){return t==='DAY'?'08:00–20:30 · 11,5 часа':t==='NIGHT'?'20:45–07:45 следующего дня · 10,5 часа':''}
 function money(v){return MONEY.format(Number.isFinite(v)?v:0)}
@@ -96,7 +99,7 @@ function rub(v){return `${new Intl.NumberFormat('ru-RU',{maximumFractionDigits:0
 function round2(n){return Math.round((n+Number.EPSILON)*100)/100}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
-function render(){renderCalendar();renderNext();if($('dateInput').value!==selected)$('dateInput').value=selected;$('shiftInput').value=typeOf(selected);syncSalaryControls();renderSalary();renderHistory()}
+function render(){renderCalendar();renderNext();if($('dateInput').value!==selected)$('dateInput').value=selected;$('shiftInput').value=isExtra(selected)?(typeOf(selected)==='DAY'?'XDAY':'XNIGHT'):typeOf(selected);syncSalaryControls();renderSalary();renderHistory()}
 function renderCalendar(){
   const y=shown.getFullYear(),m=shown.getMonth();$('monthTitle').textContent=new Intl.DateTimeFormat('ru-RU',{month:'long',year:'numeric'}).format(shown);
   const g=$('calendar');g.innerHTML='';['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].forEach(x=>{const e=document.createElement('div');e.className='dow';e.textContent=x;g.append(e)});
@@ -104,25 +107,25 @@ function renderCalendar(){
   for(let i=0;i<offset;i++)g.append(document.createElement('div'));
   for(let d=1;d<=n;d++){
     const s=isoDate(new Date(y,m,d)),t=typeOf(s),e=document.createElement('button');
-    e.className='daycell '+({DAY:'day',NIGHT:'night',VACATION:'leave',OFF:''})[t]+(s===today?' today':'')+(s===selected?' selected':'');
-    e.innerHTML=`<span class="num">${d}</span><span class="letter">${({DAY:'Д',NIGHT:'Н',VACATION:'О',OFF:'·'})[t]}</span>`;
-    e.setAttribute('aria-label',`${d}: ${label(t)}`);e.onclick=()=>{if(s===selected&&cycleDate(s))return;selected=s;render()};g.append(e);
+    e.className='daycell '+({DAY:'day',NIGHT:'night',VACATION:'leave',OFF:''})[t]+(isExtra(s)?' extra':'')+(s===today?' today':'')+(s===selected?' selected':'');
+    e.innerHTML=`<span class="num">${d}</span><span class="letter">${({DAY:'Д',NIGHT:'Н',VACATION:'О',OFF:'·'})[t]+(isExtra(s)?'+':'')}</span>`;
+    e.setAttribute('aria-label',`${d}: ${labelOf(s)}`);e.onclick=()=>{if(s===selected&&cycleDate(s))return;selected=s;render()};g.append(e);
   }
 }
 function renderNext(){
   const now=new Date();let candidate=null;
   for(let i=0;i<370;i++){const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()+i),s=isoDate(d),t=typeOf(s);if(t==='DAY'||t==='NIGHT'){candidate={d,s,t};break}}
   if(!candidate){$('nextLabel').textContent='БЛИЖАЙШАЯ СМЕНА';$('nextTitle').textContent='Смены не найдены';$('nextDate').textContent='Добавь смену в календаре';$('nextTime').textContent='';$('nextCountdown').textContent='';return}
-  const {d,s,t}=candidate;$('nextLabel').textContent=s===isoDate(new Date())?'СМЕНА СЕГОДНЯ':'БЛИЖАЙШАЯ СМЕНА';$('nextTitle').textContent=label(t);$('nextDate').textContent=new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long'}).format(d);$('nextTime').textContent=time(t);$('nextCountdown').textContent=t==='DAY'?'Перед сменой: подъём в 05:40':'Ночная смена заканчивается завтра в 07:45';
+  const {d,s,t}=candidate;$('nextLabel').textContent=s===isoDate(new Date())?'СМЕНА СЕГОДНЯ':'БЛИЖАЙШАЯ СМЕНА';$('nextTitle').textContent=labelOf(s);$('nextDate').textContent=new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long'}).format(d);$('nextTime').textContent=time(t);$('nextCountdown').textContent=t==='DAY'?'Перед сменой: подъём в 05:40':'Ночная смена заканчивается завтра в 07:45';
 }
 $('prevMonth').onclick=()=>{shown=new Date(shown.getFullYear(),shown.getMonth()-1,1);render()};
 $('nextMonth').onclick=()=>{shown=new Date(shown.getFullYear(),shown.getMonth()+1,1);render()};
 $('dateInput').onchange=()=>{selected=$('dateInput').value||selected;render()};
 $('saveBtn').onclick=()=>{
-  selected=$('dateInput').value||selected;const t=$('shiftInput').value;
+  selected=$('dateInput').value||selected;let t=$('shiftInput').value;const xf=t==='XDAY'||t==='XNIGHT';if(xf)t=t==='XDAY'?'DAY':'NIGHT';
   if(t==='VACATION'){if(!data.leave.includes(selected))data.leave.push(selected);delete data.shifts[selected]}
   else{data.leave=data.leave.filter(x=>x!==selected);if(t==='OFF')delete data.shifts[selected];else data.shifts[selected]=t}
-  persist();render();$('status').textContent=`Сохранено: ${selected} — ${label(t)}.`;
+  if(!data.extra)data.extra={};if(xf)data.extra[selected]=true;else delete data.extra[selected];persist();render();$('status').textContent=`Сохранено: ${selected} — ${label(t)}${xf?' (доп.)':''}.`;
 };
 $('resetBtn').onclick=()=>{if(confirm('Очистить весь график (смены и отпуск)?')){const sal=data.salary,history=data.payrollHistory,latest=data.latestImportedRates,classifications=data.classifications,pending=data.pendingModelProposal;data=structuredClone(defaults);data.salary=sal;data.payrollHistory=history;data.latestImportedRates=latest;data.classifications=classifications||{};data.pendingModelProposal=pending||null;persist();render();$('status').textContent='График очищен; зарплатные параметры, история и классификации сохранены.'}};
 function monthShiftCounts(){
@@ -192,7 +195,7 @@ function renderSalary(){
   const r=getSalaryResult();
   $('salaryMonth').textContent=new Intl.DateTimeFormat('ru-RU',{month:'long',year:'numeric'}).format(shown);
   $('salaryGross').textContent=money(r.gross);$('salaryNet').textContent=money(r.net);$('salaryDeductions').textContent=money(r.deductions);$('salaryBalance').textContent=money(r.balance);
-  $('salaryShiftCounts').textContent=`Смены: ${r.c.day} дневн. · ${r.c.night} ночн. · отпускных дней: ${r.c.leave} · выходных: ${r.c.off}. Оплачиваемые часы: ${NUMBER.format(r.paidHours)} ч${Number(data.salary.hoursOverride)>0?' (введены вручную)':' (оценка по графику)'}. Оценка часов ночных доплат: ${NUMBER.format(r.nightPremiumHours)} ч; вечерних: ${NUMBER.format(r.eveningPremiumHours)} ч.`;
+  $('salaryShiftCounts').textContent=`Смены: ${r.c.day} дневн. · ${r.c.night} ночн. · из них доп.: ${extraCount(shown.getFullYear(),shown.getMonth()+1)} · отпускных дней: ${r.c.leave} · выходных: ${r.c.off}. Оплачиваемые часы: ${NUMBER.format(r.paidHours)} ч${Number(data.salary.hoursOverride)>0?' (введены вручную)':' (оценка по графику)'}. Оценка часов ночных доплат: ${NUMBER.format(r.nightPremiumHours)} ч; вечерних: ${NUMBER.format(r.eveningPremiumHours)} ч.`;
   const rows=[...r.lines,{title:'Всего начислено',amount:r.gross,total:true},{title:`НДФЛ ${NUMBER.format(Number(data.salary.taxRate)||0)}% от начислений + ${money(r.taxableBenefit)} дохода за питание`,amount:r.tax,minus:true},{title:`Профсоюзные взносы ${NUMBER.format(Number(data.salary.unionRate)||0)}%`,amount:r.union,minus:true},{title:'Удержание за питание',amount:r.food,minus:true},{title:'Прочие удержания',amount:r.other,minus:true},{title:'Всего удержано по модели',amount:r.deductions,total:true},{title:'Прогноз на руки за месяц',amount:r.net,total:true},{title:'Уже получено (аванс + другие выплаты)',amount:r.paid,minus:true},{title:'Остаток после уже полученных сумм',amount:r.balance,total:true}];
   $('salaryBreakdown').innerHTML=rows.map(x=>`<div class="breakdown-row ${x.total?'total':''} ${x.minus?'minus':''}"><span>${escapeHtml(x.title)}</span><strong>${money(x.amount)}</strong></div>`).join('');
   const sc=forecastScenarios(r.c);$('forecastLow').textContent=money(sc.low);$('forecastMid').textContent=money(sc.mid);$('forecastHigh').textContent=money(sc.high);
@@ -565,8 +568,8 @@ $('exportBtn').onclick=()=>{
   const add=(uid,title,start,end,desc,alarm)=>{lines.push('BEGIN:VEVENT',`UID:${uid}@work-schedule`,`DTSTAMP:${new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'')}`,`SUMMARY:${esc(title)}`,`DTSTART:${start}`,`DTEND:${end}`,`DESCRIPTION:${esc(desc)}`);if(alarm)lines.push('BEGIN:VALARM',`TRIGGER:${alarm}`,'ACTION:DISPLAY',`DESCRIPTION:${esc(title)}`,'END:VALARM');lines.push('END:VEVENT')};
   const start=new Date();
   for(let i=-1;i<370;i++){const d=new Date(start.getFullYear(),start.getMonth(),start.getDate()+i),s=isoDate(d),t=typeOf(s),compact=s.replaceAll('-','');
-    if(t==='DAY'){add('day-'+s,'Дневная смена',compact+'T080000',compact+'T203000','08:00–20:30; 11,5 оплачиваемого часа','-PT15M');const p=new Date(d);p.setDate(p.getDate()-1);const ps=isoDate(p).replaceAll('-','');add('prep-'+s,'Подготовиться к дневной смене',ps+'T230000',ps+'T230500','Завтра дневная смена; подъём 05:40','PT0M');add('wake-'+s,'Подъём в 05:40',compact+'T054000',compact+'T054500','Дневная смена начинается в 08:00','PT0M')}
-    else if(t==='NIGHT'){const end=new Date(d);end.setDate(end.getDate()+1);add('night-'+s,'Ночная смена',compact+'T204500',isoDate(end).replaceAll('-','')+'T074500','20:45–07:45 следующего дня; 10,5 оплачиваемого часа','-PT15M')}
+    if(t==='DAY'){add('day-'+s,'Дневная смена'+(isExtra(s)?' (доп.)':''),compact+'T080000',compact+'T203000','08:00–20:30; 11,5 оплачиваемого часа','-PT15M');const p=new Date(d);p.setDate(p.getDate()-1);const ps=isoDate(p).replaceAll('-','');add('prep-'+s,'Подготовиться к дневной смене',ps+'T230000',ps+'T230500','Завтра дневная смена; подъём 05:40','PT0M');add('wake-'+s,'Подъём в 05:40',compact+'T054000',compact+'T054500','Дневная смена начинается в 08:00','PT0M')}
+    else if(t==='NIGHT'){const end=new Date(d);end.setDate(end.getDate()+1);add('night-'+s,'Ночная смена'+(isExtra(s)?' (доп.)':''),compact+'T204500',isoDate(end).replaceAll('-','')+'T074500','20:45–07:45 следующего дня; 10,5 оплачиваемого часа','-PT15M')}
   }
   const a=[...data.leave].sort();if(a.length){let b=a[0],last=b;for(const s of [...a.slice(1),null]){if(s&&s===addDays(last,1)){last=s;continue}add('leave-'+b,'Отпуск',b.replaceAll('-',''),addDays(last,1).replaceAll('-',''),'Отпуск; рабочие смены не планируются');if(s)b=last=s}}
   lines.push('END:VCALENDAR');downloadFile(lines.join('\r\n')+'\r\n','Мой_рабочий_график.ics','text/calendar;charset=utf-8');$('status').textContent='Файл календаря подготовлен.';
@@ -583,17 +586,17 @@ function showView(v){if(!VIEWS.includes(v))v='plan';document.querySelectorAll('[
 document.querySelectorAll('.tabbar button').forEach(b=>{b.onclick=()=>showView(b.dataset.go)});
 let view0='plan';try{view0=localStorage.getItem('work-schedule-view')||'plan'}catch(e){}
 showView(view0);
-function parseQuick(str,y,m){const n=new Date(y,m,0).getDate(),out={},bad=[];
-  for(const t of String(str).toLowerCase().replace(/[;\s]+/g,',').split(',')){if(!t)continue;const k=t.match(/^(\d{1,2})(?:-(\d{1,2}))?([нn]|[дd])?$/);if(!k){bad.push(t);continue}
-    const a=+k[1],b=k[2]?+k[2]:a;if(a<1||b>n||b<a){bad.push(t);continue}for(let d=a;d<=b;d++)out[d]=/[нn]/.test(k[3]||'')?'NIGHT':'DAY'}
-  return {out,bad}}
+function parseQuick(str,y,m){const n=new Date(y,m,0).getDate(),out={},ex={},bad=[];
+  for(const t of String(str).toLowerCase().replace(/[;\s]+/g,',').split(',')){if(!t)continue;const k=t.match(/^(\d{1,2})(?:-(\d{1,2}))?([нn]|[дd])?(\+)?$/);if(!k){bad.push(t);continue}
+    const a=+k[1],b=k[2]?+k[2]:a;if(a<1||b>n||b<a){bad.push(t);continue}for(let d=a;d<=b;d++){out[d]=/[нn]/.test(k[3]||'')?'NIGHT':'DAY';if(k[4])ex[d]=true}}
+  return {out,ex,bad}}
 function quickPreview(){const p=parseQuick($('quickInput').value,shown.getFullYear(),shown.getMonth()+1),v=Object.values(p.out),dn=v.filter(x=>x==='DAY').length,nn=v.length-dn;
-  $('quickHint').textContent=p.bad.length?`Не понял: ${p.bad.join(', ')}`:v.length?`Распознано: ${dn} дн., ${nn} ноч. Месяц: ${shown.toLocaleDateString('ru-RU',{month:'long',year:'numeric'})}.`:'Дни через запятую, диапазоны через дефис, «н» — ночная смена.';return p}
+  $('quickHint').textContent=p.bad.length?`Не понял: ${p.bad.join(', ')}`:v.length?`Распознано: ${dn} дн., ${nn} ноч.${Object.keys(p.ex).length?`, доп.: ${Object.keys(p.ex).length}`:''} Месяц: ${shown.toLocaleDateString('ru-RU',{month:'long',year:'numeric'})}.`:'Дни через запятую, диапазоны через дефис, «н» — ночная смена, «+» — доп. смена.';return p}
 $('quickInput').oninput=quickPreview;
 $('quickApply').onclick=()=>{const p=quickPreview(),keys=Object.keys(p.out);if(p.bad.length||!keys.length)return;
   const pre=`${shown.getFullYear()}-${String(shown.getMonth()+1).padStart(2,'0')}-`,old=Object.keys(data.shifts).filter(k=>k.startsWith(pre));
   if(old.length&&!confirm(`Заменить ${old.length} смен в этом месяце на ${keys.length} новых? Отпуск не изменится.`))return;
-  old.forEach(k=>delete data.shifts[k]);keys.forEach(d=>{data.shifts[pre+String(d).padStart(2,'0')]=p.out[d]});persist();render();$('quickInput').value='';$('status').textContent=`Месяц заполнен: ${keys.length} смен.`};
+  if(!data.extra)data.extra={};old.forEach(k=>{delete data.shifts[k];delete data.extra[k]});keys.forEach(d=>{const kk=pre+String(d).padStart(2,'0');data.shifts[kk]=p.out[d];if(p.ex[d])data.extra[kk]=true});persist();render();$('quickInput').value='';$('status').textContent=`Месяц заполнен: ${keys.length} смен.`};
 function renderShare(){const c=shareCfg();$('shareEnable').textContent=c?'Обновить сейчас':'Включить и получить ссылку';
   ['shareLinkOut','shareCopy','shareOff'].forEach(id=>$(id).classList.toggle('hidden',!c));if(c){$('shareLinkOut').value=shareLink(c);$('shareMode').value=c.mode}}
 $('shareEnable').onclick=async()=>{let c=shareCfg();if(!c)c={id:hex(crypto.getRandomValues(new Uint8Array(16))),wk:hex(crypto.getRandomValues(new Uint8Array(24))),ek:b64(crypto.getRandomValues(new Uint8Array(32)))};
@@ -606,7 +609,7 @@ let viewerLast='';
 function vnote(t){$('viewerNote').textContent=t}
 function applyViewer(p){const box=$('sharedPay');box.textContent='';
   if(p.off){data.shifts={};data.leave=[];vnote('Владелец отключил доступ.');render();return}
-  data.shifts=p.shifts||{};data.leave=p.leave||[];
+  data.shifts=p.shifts||{};data.leave=p.leave||[];data.extra=p.extra||{};
   for(const x of p.pay||[]){const [y,m]=x.month.split('-').map(Number),name=new Intl.DateTimeFormat('ru-RU',{month:'long'}).format(new Date(y,m-1,1)),r=document.createElement('p');
     r.textContent=`${name}: на руки ≈ ${money(x.net)}${x.vac?' (без отпускных)':''}.`+(x.advance?` Аванс 25-го обычно ${money(x.advance[0])}${x.advance[1]!==x.advance[0]?' или '+money(x.advance[1]):''}; остаток 10-го следующего месяца ≈ ${money(x.net-x.advance[1])}–${money(x.net-x.advance[0])}.`:'');box.append(r)}
   vnote(`Обновлено владельцем: ${new Date(p.updated).toLocaleString('ru-RU')}`);render()}
